@@ -195,3 +195,44 @@ Documentado, mas **fora do escopo até aqui**:
 - Corrigir `backend.baseUrl`/`app.baseUrl` em `app-config.production.yaml` — hoje aponta pra `localhost:7007`, o que o próprio Backstage já avisa nos logs como "misconfiguration" para ambientes reais (precisa ser uma URL roteável de verdade, ex. via Ingress)
 - Integração do catálogo com GitHub (hoje só tem os exemplos estáticos do `create-app`)
 - Pipeline de CI para build/push de imagem em um registry de verdade (hoje é tudo manual e local, com `imagePullPolicy: Never`)
+
+## Atualizações (22/09)
+
+**Definição de escopo com a liderança:** confirmado que **produção fica sob coordenação
+do time de infraestrutura**. O papel deste time é entregar um **ambiente de
+homologação validado**, que será usado por um período prolongado. Pendência em
+aberto: confirmar quem disponibiliza o ambiente de homologação em si (infra
+fornece servidor/cluster, ou o time sobe por conta própria) — hoje tudo ainda
+roda só nesta máquina (notebook pessoal), o que não é suficiente para
+homologação (precisa ser permanente e compartilhado).
+
+**Documentação de reprodução criada:**
+- `PLANO-DE-IMPLANTACAO.md` (+ versão `PLANO-DE-IMPLANTACAO.pdf`) — passo a
+  passo autossuficiente para refazer o ambiente do zero em outra máquina, sem
+  depender de IA. Auditado linha por linha contra os manifests reais do
+  projeto antes de finalizar; a auditoria encontrou e corrigiu 3 problemas no
+  primeiro rascunho (uma etapa obrigatória faltando — gerar `dist/*.tar.gz`
+  via `yarn tsc && yarn build:backend` antes do `docker build` —, uma etapa
+  que sugeria edição manual desnecessária, e referências cruzadas
+  desalinhadas após a correção).
+- `ROTEIRO-APRESENTACAO.md` — roteiro completo para apresentação interna,
+  cobrindo todas as etapas técnicas, os 4 problemas enfrentados, e um
+  glossário de termos.
+
+**Projeto publicado no GitHub:** `https://github.com/babilods/backstage-camara`.
+Cuidado de segurança aplicado antes do primeiro commit:
+- `k8s/postgres-secret.yaml` (senha real) adicionado ao `.gitignore` do
+  repositório raiz — nunca foi versionado.
+- Criado `k8s/postgres-secret.example.yaml` como modelo, sem dado sensível.
+- Detectado e corrigido um repositório git aninhado dentro de `backstage-app/`
+  (criado automaticamente pelo `create-app`) — o `.git` interno foi removido
+  para que os arquivos fossem versionados normalmente pelo repositório
+  principal, em vez de aparecerem como um submódulo vazio.
+
+**Incidente (22/09):** o arquivo `DEPLOYMENT_LOG.md` e o `PLANO-DE-IMPLANTACAO.pdf`
+desapareceram do disco entre uma mensagem e outra (causa não identificada —
+possivelmente ação externa ao Claude Code, já que não houve nenhum comando de
+exclusão correspondente no histórico desta sessão). O `.md` foi recuperado via
+`git restore` (já estava commitado); o `.pdf` não tinha sido commitado ainda e
+precisou ser regenerado. Lição: considerar comitar no git logo após gerar
+qualquer artefato importante (como o PDF), em vez de deixar só no disco.
