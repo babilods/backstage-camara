@@ -1,0 +1,21 @@
+# Já deixamos o Ingress pronto pensando em produção, mesmo usando `minikube service`
+# no dia a dia. Para funcionar no minikube é preciso habilitar o addon:
+#   minikube addons enable ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: backstage
+  namespace: backstage
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: backstage.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: backstage
+                port:
+                  number: 7007

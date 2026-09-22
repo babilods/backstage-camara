@@ -1,0 +1,5 @@
+﻿.claude/
+
+# Segredos reais — nunca versionar. Use k8s/postgres-secret.example.yaml como
+# modelo e crie sua própria cópia local de k8s/postgres-secret.yaml.
+k8s/postgres-secret.yaml

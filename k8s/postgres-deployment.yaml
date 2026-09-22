@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: backstage
+spec:
+  replicas: 1
+  strategy:
+    # Um único pod de banco não pode ter duas cópias rodando ao mesmo tempo
+    # apontando pro mesmo disco, então recriamos em vez de fazer rolling update.
+    type: Recreate
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: postgres-credentials
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "backstage"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "backstage"]
+            initialDelaySeconds: 15
+            periodSeconds: 10
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: postgres-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: backstage
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432

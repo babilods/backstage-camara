@@ -1,0 +1,9 @@
+# Diz ao Backstage onde encontrar o Postgres dentro do cluster (nome do Service = "postgres").
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backstage-config
+  namespace: backstage
+data:
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"

@@ -1,0 +1,13 @@
+# Espaço de armazenamento persistente para os dados do Postgres.
+# Sem isso, se o pod do banco reiniciar, todos os dados seriam perdidos.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: backstage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
