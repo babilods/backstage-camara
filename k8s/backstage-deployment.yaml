@@ -27,6 +27,16 @@ spec:
                 name: backstage-config
             - secretRef:
                 name: postgres-credentials
+          env:
+            # Limita o heap do Node para não deixar o processo crescer sem
+            # controle e estourar a pouca memória disponível na máquina.
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=384"
+          resources:
+            requests:
+              memory: "300Mi"
+            limits:
+              memory: "600Mi"
           readinessProbe:
             httpGet:
               path: /healthcheck
