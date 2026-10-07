@@ -203,6 +203,29 @@ backend:
       password: ${POSTGRES_PASSWORD}
 ```
 
+E também a seção de autenticação:
+
+```yaml
+auth:
+  providers:
+    guest:
+      dangerouslyAllowOutsideDevelopment: true
+```
+
+> ⚠️ **Sem essa opção, a interface abre mas dá erro 401 em tudo.** Dentro do
+> cluster o Backstage roda em modo produção, e nesse modo o login de convidado
+> é recusado (`/api/auth/guest/refresh` responde 403 com "The guest provider
+> cannot be used outside of a development environment"). Sem login, todas as
+> chamadas da página (catálogo, notificações, permissões) voltam 401.
+>
+> Essa opção deixa **qualquer pessoa que acesse o endereço entrar como
+> convidado, sem senha** — aceitável só enquanto o Backstage roda em
+> `localhost`. Antes de produção, troque por um provedor de login real
+> (GitHub, Microsoft etc.).
+>
+> Atenção à indentação: `guest:` fica 4 espaços para dentro e a linha de baixo
+> 6 — com a indentação errada o YAML fica inválido e o Backstage não sobe.
+
 ---
 
 ## Etapa 8 — Criar o Secret do Postgres
@@ -360,7 +383,14 @@ Deixe esse terminal aberto e, no navegador do Windows, acesse:
 ```
 http://localhost:7007
 ```
-Deve aparecer a tela do Backstage.
+Deve aparecer a tela do Backstage **com o catálogo listando os exemplos**
+(API, Component, System etc.). Só a página abrir não basta — se o catálogo
+aparecer vazio ou com erro, veja se o login de convidado está funcionando:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' -H 'X-Requested-With: XMLHttpRequest' localhost:7007/api/auth/guest/refresh
+# deve mostrar 200; se mostrar 403, falta a configuração de auth da Etapa 7
+```
 
 Pra ver visualmente (painel do Kubernetes):
 ```bash
@@ -385,8 +415,16 @@ kubectl get pods -n backstage   # aguarde tudo 1/1 Running
 kubectl port-forward -n backstage svc/backstage 7007:7007
 ```
 
-Se você mudar o código do Backstage, refaça as Etapas 9, 10 e 12 e rode
-`kubectl rollout restart -n backstage deploy/backstage`.
+Se você mudar o código ou a configuração (`app-config*.yaml`) do Backstage,
+refaça as Etapas 9, 10 e 12 e rode
+`kubectl rollout restart -n backstage deploy/backstage`. (Se a mudança foi só
+em `app-config*.yaml`, a Etapa 9 pode ser pulada — o Dockerfile copia esses
+arquivos direto.)
+
+> ⚠️ Depois de um `rollout restart`, o `kubectl port-forward` que estava aberto
+> continua ocupando a porta 7007, mas apontando para o pod antigo, que já não
+> existe. Pare-o com `Ctrl+C` (ou `pkill -f "kubectl port-forward"`) e rode o
+> port-forward de novo.
 
 ---
 
@@ -401,6 +439,10 @@ Se você mudar o código do Backstage, refaça as Etapas 9, 10 e 12 e rode
 - ❌ Não reduza os tempos dos probes do Backstage para o padrão (10s/20s) — são
   curtos demais; aplique `k8s/backstage-deployment.yaml` como está.
 - ❌ Não versione o `k8s/postgres-secret.yaml` — ele contém a senha real.
+- ❌ Não considere o teste concluído só porque a página abriu — confira se o
+  catálogo carrega (o erro 401 do login de convidado só aparece aí).
+- ❌ Não reaproveite um port-forward antigo depois de reiniciar o pod do
+  Backstage — reinicie o port-forward também.
 - ❌ Evite rodar `yarn install` pesado ao mesmo tempo que o minikube está de pé
   em máquinas com poucos núcleos — rode `minikube stop` antes, se notar tudo
   muito lento, e `minikube start` depois.
