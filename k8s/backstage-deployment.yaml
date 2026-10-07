@@ -16,7 +16,8 @@ spec:
       containers:
         - name: backstage
           # Imagem construída localmente com `docker build` e carregada no minikube
-          # com `minikube image load`. Por isso o Kubernetes não deve tentar
+          # via `ctr images import` (Etapa 12 do PLANO-DE-IMPLANTACAO.md; o
+          # `minikube image load` trava com containerd). Por isso o Kubernetes não deve tentar
           # baixá-la de um registry externo (imagePullPolicy: Never).
           image: backstage:latest
           imagePullPolicy: Never

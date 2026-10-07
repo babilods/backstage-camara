@@ -1,11 +1,15 @@
 # Plano de Implantação — Backstage no Kubernetes local (WSL2 + minikube)
 
-Guia autossuficiente para refazer este projeto do zero, em qualquer máquina Windows
-com WSL2 disponível. Segue exatamente a ordem que funcionou, já incluindo as
-correções para os problemas que enfrentamos na primeira vez.
+Guia autossuficiente para reproduzir este projeto em qualquer máquina Windows
+com WSL2 disponível, a partir do código deste repositório. Segue exatamente a
+ordem que funcionou, já incluindo as correções para os problemas que
+enfrentamos nas instalações anteriores.
 
 **Pré-requisito:** Windows 10 (build recente) ou Windows 11, com permissão de
 administrador na máquina (necessário só na Etapa 1, para instalar o WSL).
+
+**Validado em:** Ubuntu 24.04 e Ubuntu 26.04 (WSL2), Docker Engine 29.8,
+Node 24.21, minikube 1.39, kubectl 1.37.
 
 ---
 
@@ -20,6 +24,11 @@ wsl --install -d Ubuntu-24.04
 Isso baixa e instala o WSL2 (se ainda não estiver instalado) junto com o Ubuntu 24.04.
 Na primeira vez, ele vai pedir para você criar um usuário e senha Linux — pode ser
 qualquer usuário, é só para uso local.
+
+> Se a máquina já tiver uma distro chamada só `Ubuntu` (versão 24.04 ou mais
+> nova, ex: 26.04), ela também serve — o processo inteiro foi validado no 26.04.
+> Nesse caso, troque `Ubuntu-24.04` por `Ubuntu` nos comandos `wsl -d` deste guia.
+> Para ver o que já está instalado: `wsl -l -v`.
 
 Depois de instalado, confirme que está funcionando:
 
@@ -41,11 +50,16 @@ A partir daqui, todos os comandos rodam **dentro do WSL** (abra um terminal Ubun
 ou use `wsl -d Ubuntu-24.04` a partir do PowerShell).
 
 ```bash
+# Se já houve uma tentativa anterior de instalação, pode ter sobrado um
+# docker.list sem a chave GPG — ele faz o primeiro apt-get update falhar com
+# "NO_PUBKEY 7EA0A9C3F273FCD8". Removê-lo é seguro: é recriado logo abaixo.
+sudo rm -f /etc/apt/sources.list.d/docker.list
+
 # Instalar pacotes básicos e adicionar o repositório oficial do Docker
 sudo apt-get update -y
 sudo apt-get install -y ca-certificates curl gnupg
 sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
 sudo chmod a+r /etc/apt/keyrings/docker.asc
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
@@ -59,13 +73,21 @@ sudo usermod -aG docker $USER
 
 ### Ativar o systemd (necessário para o Docker rodar como serviço)
 
-Edite (ou crie) o arquivo `/etc/wsl.conf`:
+Confira se já está ativo (nas distros recentes do WSL, normalmente já vem):
 
 ```bash
-sudo bash -c 'printf "[boot]\nsystemd=true\n" > /etc/wsl.conf'
+cat /etc/wsl.conf
 ```
 
-Depois, **feche todo o WSL e reinicie** (rode isso no PowerShell, fora do WSL):
+Se não aparecer `systemd=true` na seção `[boot]`, ative:
+
+```bash
+sudo bash -c 'printf "[boot]\nsystemd=true\n" >> /etc/wsl.conf'
+```
+
+Depois, **feche todo o WSL e reinicie** (rode isso no PowerShell, fora do WSL).
+Isso é necessário mesmo que o systemd já estivesse ativo, para o grupo `docker`
+passar a valer para o seu usuário:
 
 ```powershell
 wsl --shutdown
@@ -102,7 +124,7 @@ sudo apt-get install -y build-essential python3-dev
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_24.x | sudo bash -
 sudo apt-get install -y nodejs
-npm install -g yarn
+sudo npm install -g yarn   # o sudo é necessário: o Node da NodeSource instala em /usr
 ```
 
 Confirme as versões:
@@ -117,63 +139,56 @@ yarn --version
 
 ```bash
 # minikube
-curl -Lo /tmp/minikube https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+curl -fLo /tmp/minikube https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
 sudo install /tmp/minikube /usr/local/bin/minikube
 
-# kubectl (ajuste a versão se necessário, ou consulte https://dl.k8s.io/release/stable.txt)
-curl -Lo /tmp/kubectl https://dl.k8s.io/release/v1.37.0/bin/linux/amd64/kubectl
+# kubectl (versão estável atual)
+curl -fLo /tmp/kubectl "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
 sudo install /tmp/kubectl /usr/local/bin/kubectl
 ```
 
----
-
-## Etapa 6 — Subir o cluster minikube
-
-```bash
-minikube start --driver=docker --memory=2200mb --cpus=2
-```
-
-> As flags `--memory` e `--cpus` explícitas evitam um aviso de "não sobra memória
-> para o sistema" que aparece com a detecção automática em máquinas mais simples.
-
 Confirme:
 ```bash
-minikube status
-kubectl get nodes
+minikube version
+kubectl version --client
 ```
-Deve aparecer `Running`/`Ready` em tudo.
 
 ---
 
-## Etapa 7 — Criar o projeto Backstage
+## Etapa 6 — Clonar o repositório e instalar as dependências
+
+O projeto Backstage já está pronto neste repositório — **não é preciso rodar
+`create-app`** (veja o Apêndice se quiser criar um projeto novo do zero).
 
 ```bash
-npx @backstage/create-app@latest --path backstage-app
+cd ~
+git clone https://github.com/babilods/backstage-camara.git
+cd backstage-camara/backstage-app
+yarn install
 ```
 
-> Rode esse comando dentro do **Bash do WSL**, não em outro terminal — em alguns
-> ambientes, o pipe de entrada de outros shells injeta caracteres invisíveis que
-> quebram a validação do prompt interativo ("App name must be lowercase...").
+O `yarn install` leva alguns minutos e termina com "Done with warnings" — os
+avisos são normais.
 
-Depois de criado, entre na pasta e rode localmente para validar antes de
-containerizar:
+**Opcional** — validar localmente antes de containerizar:
 ```bash
-cd backstage-app
-yarn install
 yarn start
 ```
 Acesse `http://localhost:3000` no navegador do Windows (o WSL2 encaminha essa
 porta automaticamente) e confirme que a tela do Backstage aparece. Pare com
-`Ctrl+C` quando confirmar.
+`Ctrl+C` quando confirmar. (Pode pular: o teste da Etapa 14 valida a mesma coisa.)
+
+> Clone o repositório **dentro do sistema de arquivos do Linux** (`~/...`), não
+> em `/mnt/c/...` — o `yarn install` e o build ficam muitas vezes mais lentos
+> sobre o disco do Windows.
 
 ---
 
-## Etapa 8 — Conferir o banco de dados de produção (não precisa editar nada)
+## Etapa 7 — Conferir o banco de dados de produção (não precisa editar nada)
 
-O `create-app` já gera automaticamente o arquivo `app-config.production.yaml`
-(na raiz do `backstage-app`) com a seção de banco de dados pronta, lendo de
-variáveis de ambiente — exatamente o que precisamos para o Kubernetes. **Não é
-necessário criar nem editar esse arquivo**, só confirmar que ele já contém isto:
+O arquivo `backstage-app/app-config.production.yaml` já contém a seção de banco
+de dados lendo de variáveis de ambiente — exatamente o que precisamos para o
+Kubernetes. Só confirme que ele contém isto:
 
 ```yaml
 backend:
@@ -188,205 +203,47 @@ backend:
       password: ${POSTGRES_PASSWORD}
 ```
 
-Se por acaso alguma versão futura do `create-app` gerar diferente, é só ajustar
-manualmente para ficar assim.
+---
+
+## Etapa 8 — Criar o Secret do Postgres
+
+Os manifests do Kubernetes já estão prontos na pasta `k8s/` (na raiz do
+repositório) e **devem ser aplicados como estão** — já vêm com:
+
+- tempos de readiness/liveness probe do Backstage mais tolerantes que o padrão
+  (o Backstage demora para inicializar todos os módulos internos, e um tempo
+  curto demais faz o Kubernetes matar o pod no meio da inicialização);
+- limites de memória no Backstage (`300Mi`–`600Mi`, com `NODE_OPTIONS=--max-old-space-size=384`)
+  e no Postgres (`150Mi`–`300Mi`).
+
+A única exceção é o `k8s/postgres-secret.yaml`, que **não está no repositório**
+de propósito (contém a senha real e está no `.gitignore`). Crie a sua cópia a
+partir do modelo, já com uma senha aleatória:
+
+```bash
+cd ~/backstage-camara
+PW=$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24)
+sed "s/troque-esta-senha/$PW/" k8s/postgres-secret.example.yaml > k8s/postgres-secret.yaml
+chmod 600 k8s/postgres-secret.yaml
+git status --short   # o postgres-secret.yaml NÃO deve aparecer aqui
+```
+
+> A senha não precisa ser igual à de outra máquina — cada cluster começa com um
+> banco vazio. Só importa se você for migrar dados de um banco existente.
 
 ---
 
-## Etapa 9 — Criar os manifests do Kubernetes
-
-Crie uma pasta `k8s/` com os seguintes arquivos (na raiz do projeto, fora do
-`backstage-app/`):
-
-**`k8s/namespace.yaml`**
-```yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: backstage
-```
-
-**`k8s/postgres-secret.yaml`** (troque a senha por uma sua)
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: postgres-credentials
-  namespace: backstage
-type: Opaque
-stringData:
-  POSTGRES_USER: backstage
-  POSTGRES_PASSWORD: troque-esta-senha
-  POSTGRES_DB: backstage
-```
-
-**`k8s/backstage-config.yaml`**
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: backstage-config
-  namespace: backstage
-data:
-  POSTGRES_HOST: postgres
-  POSTGRES_PORT: "5432"
-```
-
-**`k8s/postgres-pvc.yaml`**
-```yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: postgres-data
-  namespace: backstage
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 2Gi
-```
-
-**`k8s/postgres-deployment.yaml`**
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: postgres
-  namespace: backstage
-spec:
-  replicas: 1
-  strategy:
-    type: Recreate
-  selector:
-    matchLabels:
-      app: postgres
-  template:
-    metadata:
-      labels:
-        app: postgres
-    spec:
-      containers:
-        - name: postgres
-          image: postgres:16
-          ports:
-            - containerPort: 5432
-          envFrom:
-            - secretRef:
-                name: postgres-credentials
-          env:
-            - name: PGDATA
-              value: /var/lib/postgresql/data/pgdata
-          volumeMounts:
-            - name: postgres-storage
-              mountPath: /var/lib/postgresql/data
-          readinessProbe:
-            exec:
-              command: ["pg_isready", "-U", "backstage"]
-            initialDelaySeconds: 5
-            periodSeconds: 5
-          livenessProbe:
-            exec:
-              command: ["pg_isready", "-U", "backstage"]
-            initialDelaySeconds: 15
-            periodSeconds: 10
-      volumes:
-        - name: postgres-storage
-          persistentVolumeClaim:
-            claimName: postgres-data
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: postgres
-  namespace: backstage
-spec:
-  selector:
-    app: postgres
-  ports:
-    - port: 5432
-      targetPort: 5432
-```
-
-**`k8s/backstage-deployment.yaml`**
-
-> Repare nos tempos de `initialDelaySeconds` abaixo — já vêm ajustados (mais
-> tolerantes que o padrão) porque o Backstage demora para inicializar todos os
-> seus módulos internos, e um tempo curto demais faz o Kubernetes matar o pod
-> achando que travou, no meio da inicialização.
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: backstage
-  namespace: backstage
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: backstage
-  template:
-    metadata:
-      labels:
-        app: backstage
-    spec:
-      containers:
-        - name: backstage
-          image: backstage:latest
-          imagePullPolicy: Never
-          ports:
-            - containerPort: 7007
-          envFrom:
-            - configMapRef:
-                name: backstage-config
-            - secretRef:
-                name: postgres-credentials
-          readinessProbe:
-            httpGet:
-              path: /healthcheck
-              port: 7007
-            initialDelaySeconds: 30
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 6
-          livenessProbe:
-            httpGet:
-              path: /healthcheck
-              port: 7007
-            initialDelaySeconds: 60
-            periodSeconds: 15
-            timeoutSeconds: 5
-            failureThreshold: 5
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: backstage
-  namespace: backstage
-spec:
-  type: NodePort
-  selector:
-    app: backstage
-  ports:
-    - port: 7007
-      targetPort: 7007
-```
-
----
-
-## Etapa 10 — Gerar os arquivos que o Dockerfile espera encontrar
+## Etapa 9 — Gerar os arquivos que o Dockerfile espera encontrar
 
 > ⚠️ **Passo que passa despercebido, mas é obrigatório.** O Dockerfile do
 > backend (`packages/backend/Dockerfile`) não builda o código TypeScript —
 > ele só empacota arquivos **já compilados**, que precisam existir antes. Sem
-> este passo, o `docker build` da Etapa 11 falha procurando por
+> este passo, o `docker build` da Etapa 10 falha procurando por
 > `packages/backend/dist/skeleton.tar.gz`.
 
 Dentro da pasta `backstage-app/`:
 
 ```bash
-yarn install
 yarn tsc
 yarn build:backend
 ```
@@ -399,7 +256,7 @@ ls packages/backend/dist/
 
 ---
 
-## Etapa 11 — Buildar a imagem Docker
+## Etapa 10 — Buildar a imagem Docker
 
 Ainda dentro da pasta `backstage-app/`:
 
@@ -411,8 +268,31 @@ Isso pode demorar alguns minutos na primeira vez (baixa a imagem base e instala
 as dependências de produção). Confirme que a imagem foi criada:
 
 ```bash
-docker images | grep backstage
+docker images backstage
 ```
+
+> As Etapas 6, 9 e 10 vêm **antes** de subir o minikube de propósito: o build
+> não depende do cluster, e assim o `yarn install`/`docker build` (pesados) não
+> disputam memória com ele.
+
+---
+
+## Etapa 11 — Subir o cluster minikube
+
+```bash
+minikube start --driver=docker --memory=2200mb --cpus=2
+```
+
+> As flags `--memory` e `--cpus` explícitas evitam um aviso de "não sobra memória
+> para o sistema" que aparece com a detecção automática em máquinas mais simples.
+
+Confirme:
+```bash
+minikube status
+kubectl get nodes
+```
+Deve aparecer `Running`/`Ready` em tudo (logo após o start o nó pode aparecer
+`NotReady` por alguns segundos — é normal).
 
 ---
 
@@ -452,27 +332,31 @@ kubectl apply -f k8s/postgres-secret.yaml -f k8s/backstage-config.yaml -f k8s/po
 
 Aguarde o Postgres ficar pronto antes de continuar:
 ```bash
-kubectl get pods -n backstage --watch
+kubectl wait -n backstage --for=condition=available deploy/postgres --timeout=300s
+kubectl get pods -n backstage
 ```
-Espere até `postgres-...` mostrar `1/1 Running` (pode reiniciar uma vez sozinho,
-é normal). Aperte `Ctrl+C` para sair do modo `--watch`.
+`postgres-...` deve mostrar `1/1 Running` (pode reiniciar uma vez sozinho, é normal).
 
 Agora aplique o Backstage:
 ```bash
 kubectl apply -f k8s/backstage-deployment.yaml
+kubectl wait -n backstage --for=condition=available deploy/backstage --timeout=400s
+kubectl get pods -n backstage
 ```
 
-Aguarde de novo até `backstage-...` mostrar `1/1 Running`.
+Aguarde até `backstage-...` mostrar `1/1 Running`.
+
+> O `k8s/ingress.yaml` é opcional (pensado para produção) e exige
+> `minikube addons enable ingress` — não é necessário para o teste local.
 
 ---
 
 ## Etapa 14 — Testar
 
 ```bash
-# Testar de dentro do cluster
 kubectl port-forward -n backstage svc/backstage 7007:7007
 ```
-Em outra aba/terminal, ou no navegador do Windows, acesse:
+Deixe esse terminal aberto e, no navegador do Windows, acesse:
 ```
 http://localhost:7007
 ```
@@ -490,6 +374,22 @@ kubectl exec -it -n backstage deploy/postgres -- psql -U backstage -d backstage
 
 ---
 
+## Depois de reiniciar o computador (ou um `wsl --shutdown`)
+
+O cluster e o port-forward caem junto, mas a imagem, os manifests aplicados e
+os dados do Postgres continuam lá. Para voltar:
+
+```bash
+minikube start
+kubectl get pods -n backstage   # aguarde tudo 1/1 Running
+kubectl port-forward -n backstage svc/backstage 7007:7007
+```
+
+Se você mudar o código do Backstage, refaça as Etapas 9, 10 e 12 e rode
+`kubectl rollout restart -n backstage deploy/backstage`.
+
+---
+
 ## Checklist rápido — o que NÃO fazer (aprendido com erros anteriores)
 
 - ❌ Não instale o Docker Desktop — use Docker Engine nativo dentro do WSL.
@@ -498,8 +398,9 @@ kubectl exec -it -n backstage deploy/postgres -- psql -U backstage -d backstage
 - ❌ Não confie em `minikube image load` — use o método manual da Etapa 12.
 - ❌ Não confie em `docker cp` para copiar arquivos grandes para dentro do node
   do minikube — use o redirecionamento via pipe (`cat arquivo | docker exec -i ...`).
-- ❌ Não deixe os tempos padrão dos probes do Backstage (10s/20s) — são curtos
-  demais; use os valores já ajustados na Etapa 9.
+- ❌ Não reduza os tempos dos probes do Backstage para o padrão (10s/20s) — são
+  curtos demais; aplique `k8s/backstage-deployment.yaml` como está.
+- ❌ Não versione o `k8s/postgres-secret.yaml` — ele contém a senha real.
 - ❌ Evite rodar `yarn install` pesado ao mesmo tempo que o minikube está de pé
   em máquinas com poucos núcleos — rode `minikube stop` antes, se notar tudo
   muito lento, e `minikube start` depois.
@@ -512,4 +413,22 @@ Este plano cobre até um **ambiente de teste local completo e funcional**. Antes
 de produção de verdade, ainda falta: segredos gerenciados de verdade (não em
 texto puro), HTTPS, endereço público real (não `localhost`), um cluster
 Kubernetes real da organização, um registry de imagens real, e uma esteira
-(pipeline de CI/CD) para automatizar as Etapas 11 a 13.
+(pipeline de CI/CD) para automatizar as Etapas 9 a 13.
+
+---
+
+## Apêndice — Criar um projeto Backstage novo do zero
+
+Só necessário se você quiser começar um projeto novo em vez de usar o deste
+repositório (foi assim que o `backstage-app/` foi criado originalmente):
+
+```bash
+npx @backstage/create-app@latest --path backstage-app
+```
+
+> Rode esse comando dentro do **Bash do WSL**, não em outro terminal — em alguns
+> ambientes, o pipe de entrada de outros shells injeta caracteres invisíveis que
+> quebram a validação do prompt interativo ("App name must be lowercase...").
+
+O `create-app` já gera o `app-config.production.yaml` com a seção de banco da
+Etapa 7. Se alguma versão futura gerar diferente, ajuste manualmente.
